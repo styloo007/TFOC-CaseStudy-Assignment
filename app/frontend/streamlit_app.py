@@ -102,15 +102,13 @@ def display_header():
 def display_sidebar_info():
     """Display sidebar with information and metrics"""
     with st.sidebar:
-        st.image("https://via.placeholder.com/200x100/1f4e79/white?text=ADOR", caption="Financial Document AI")
-        
         st.markdown("### 📊 Supported Document Types")
         st.markdown("""
         - **DOCX**: Rule-based parsing
         - **PDF**: Gemini LLM processing  
         - **TXT/Chat**: NER model extraction
         """)
-        
+
         st.markdown("### 🎯 Extractable Entities")
         entities = [
             "Counterparty", "Notional Amount", "ISIN", "Underlying Assets",
@@ -118,7 +116,7 @@ def display_sidebar_info():
         ]
         for entity in entities:
             st.markdown(f"• {entity}")
-        
+
         # API Status
         st.markdown("### 🔧 System Status")
         api_client = APIClient(API_BASE_URL)
@@ -135,46 +133,48 @@ def display_entity_results(result: Dict[str, Any]):
     
     # Header info
     col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Document Type", result.get("document_type", "Unknown").upper())
-    
-    with col2:
-        st.metric("Processing Method", result.get("processing_method", "Unknown").replace("_", " ").title())
-    
-    with col3:
-        confidence = result.get("confidence_score", 0)
-        st.metric("Confidence Score", f"{confidence:.1%}")
-    
-    with col4:
-        entities = result.get("entities", {})
+    st.metric("Document Type", result.get("document_type", "Unknown").upper())
+    st.metric("Processing Method", result.get("processing_method", "Unknown").replace("_", " ").title())
+    confidence = result.get("confidence_score", 0)
+    st.metric("Confidence Score", f"{confidence:.1%}")
+
+    entities = result.get("entities", {})
+    # Handle dict (DOCX) and list (TXT/NER)
+    if isinstance(entities, dict):
         found_count = len([v for v in entities.values() if v is not None and v != "null"])
-        st.metric("Entities Found", f"{found_count}/{len(entities)}")
-    
+        total_count = len(entities)
+    elif isinstance(entities, list):
+        found_count = len(entities)
+        total_count = found_count
+    else:
+        found_count = 0
+        total_count = 0
+    st.metric("Entities Found", f"{found_count}/{total_count}")
+
     st.divider()
-    
+
     # Entity display
     st.subheader("📋 Extracted Entities")
-    
-    entities = result.get("entities", {})
     if not entities:
         st.warning("No entities found in the document.")
         return
-    
-    # Split into two columns for better display
-    col1, col2 = st.columns(2)
-    
-    entity_items = list(entities.items())
-    mid_point = len(entity_items) // 2
-    
-    with col1:
-        for key, value in entity_items[:mid_point]:
-            display_entity_card(key, value)
-    
-    with col2:
-        for key, value in entity_items[mid_point:]:
-            display_entity_card(key, value)
-    
+
+    # Display entities
+    if isinstance(entities, dict):
+        entity_items = list(entities.items())
+        mid_point = len(entity_items) // 2
+        col1, col2 = st.columns(2)
+        with col1:
+            for key, value in entity_items[:mid_point]:
+                display_entity_card(key, value)
+        with col2:
+            for key, value in entity_items[mid_point:]:
+                display_entity_card(key, value)
+    elif isinstance(entities, list):
+        # For spaCy NER, show text and label
+        for ent in entities:
+            display_entity_card(ent.get("text", "Entity"), ent.get("label", "Label"))
+
     # Raw JSON view (collapsible)
     with st.expander("🔍 View Raw JSON Response"):
         st.json(result)
@@ -258,94 +258,150 @@ def display_analytics_dashboard(results_history: list):
         st.plotly_chart(fig2, use_container_width=True)
 
 def main():
-    """Main Streamlit application"""
-    
-    # Initialize session state
-    if "results_history" not in st.session_state:
-        st.session_state.results_history = []
-    
-    # Display header
-    display_header()
-    
-    # Display sidebar
-    display_sidebar_info()
-    
-    # Main content area
-    st.markdown("### 📤 Upload Financial Document")
-    
-    # File uploader
+    # File uploader at the very top so uploaded_file is always defined
     uploaded_file = st.file_uploader(
         "Choose a document file",
         type=["docx", "pdf", "txt"],
-        help="Supported formats: DOCX (structured documents), PDF (complex documents), TXT (chat/simple text)"
+        help="Supported formats: DOCX, PDF, TXT"
     )
-    
+
+    # RAG chat only after PDF upload and ingestion
+    if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+        st.divider()
+        st.markdown("## RAG Pipeline")
+        if "rag_ingested" not in st.session_state:
+            st.session_state.rag_ingested = False
+
+        if not st.session_state.rag_ingested:
+            if st.button("Ingest PDF for RAG", key="rag_ingest"):
+                # Send PDF file to /rag/ingest endpoint
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                ingest_response = requests.post(f"{API_BASE_URL}/rag/ingest", files=files)
+                if ingest_response.ok and ingest_response.json().get("status") == "ingested":
+                    st.session_state.rag_ingested = True
+                    st.success("PDF ingested. You can now chat with your documents.")
+                else:
+                    st.error(f"Ingestion failed: {ingest_response.text}")
+        else:
+            st.markdown("### RAG Chatbot")
+            if "chat_history" not in st.session_state:
+                st.session_state.chat_history = []
+
+            user_input = st.text_input("Ask a question about your PDF:", key="rag_user_input")
+            if st.button("Send", key="rag_send"):
+                if user_input:
+                    st.session_state.chat_history.append({"role": "user", "content": user_input})
+                    response = requests.post(
+                        f"{API_BASE_URL}/rag/query",
+                        json={"query": user_input}
+                    )
+                    if response.ok:
+                        answer = response.json().get("response", "")
+                        st.session_state.chat_history.append({"role": "assistant", "content": answer})
+
+            # Display chat history
+            for msg in st.session_state.chat_history:
+                if msg["role"] == "user":
+                    st.markdown(f"**You:** {msg['content']}")
+                else:
+                    st.markdown(f"**RAG Bot:** {msg['content']}")
+
     if uploaded_file is not None:
-        # Display file info
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.info(f"**Filename:** {uploaded_file.name}")
-        
-        with col2:
-            st.info(f"**Size:** {len(uploaded_file.getvalue())} bytes")
-        
-        with col3:
-            file_type = uploaded_file.name.split('.')[-1].upper()
-            st.info(f"**Type:** {file_type}")
-        
-        # Processing options
-        st.markdown("### ⚙️ Processing Options")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            processing_mode = st.selectbox(
-                "Select Processing Mode",
-                ["auto", "docx", "pdf", "chat"],
-                help="Auto-detect will choose the best method based on file type"
-            )
-        
-        with col2:
-            if st.button("🚀 Extract Entities", type="primary"):
-                # Show processing indicator
-                with st.spinner(f"Processing {uploaded_file.name} using {processing_mode} method..."):
-                    start_time = time.time()
-                    
-                    # Initialize API client
-                    api_client = APIClient(API_BASE_URL)
-                    
-                    # Extract entities
-                    if processing_mode == "auto":
-                        result = api_client.extract_auto(uploaded_file)
-                    else:
-                        result = api_client.extract_entities(uploaded_file, processing_mode)
-                    
-                    processing_time = time.time() - start_time
-                    
-                    # Add metadata to result
-                    result["processing_time"] = processing_time
-                    result["timestamp"] = datetime.now().isoformat()
-                    result["filename"] = uploaded_file.name
-                    
-                    # Store in session state
-                    st.session_state.results_history.append(result)
-                
-                # Display results
-                st.markdown("### 🎯 Extraction Results")
-                st.success(f"✅ Processing completed in {processing_time:.2f} seconds")
-                
-                display_entity_results(result)
-        
-        # Display analytics if we have historical data
-        if len(st.session_state.results_history) > 1:
-            st.divider()
-            display_analytics_dashboard(st.session_state.results_history)
-        
-        # Clear history option
+        st.markdown("#### File Information")
+        file_type = uploaded_file.name.split('.')[-1].upper()
+        file_info = {
+            "Filename": uploaded_file.name,
+            "Size (bytes)": len(uploaded_file.getvalue()),
+            "Type": file_type
+        }
+        st.table(pd.DataFrame([file_info]))
+
+        st.markdown("#### Processing Options")
+        processing_mode = st.selectbox(
+            "Select Processing Mode",
+            ["auto", "docx", "pdf", "chat", "text"],
+            help="Auto-detect will choose the best method based on file type"
+        )
+
+        if "latest_result" not in st.session_state:
+            st.session_state.latest_result = None
+        if "results_history" not in st.session_state:
+            st.session_state.results_history = []
+
+        extract_clicked = st.button("🚀 Extract Entities", type="primary")
+        if extract_clicked:
+            with st.spinner(f"Processing {uploaded_file.name} using {processing_mode} method..."):
+                start_time = time.time()
+                api_client = APIClient(API_BASE_URL)
+                if processing_mode == "auto":
+                    result = api_client.extract_auto(uploaded_file)
+                elif processing_mode == "text" and file_type == "TXT":
+                    result = api_client.extract_entities(uploaded_file, "text")
+                else:
+                    result = api_client.extract_entities(uploaded_file, processing_mode)
+                processing_time = time.time() - start_time
+                result["processing_time"] = processing_time
+                result["timestamp"] = datetime.now().isoformat()
+                result["filename"] = uploaded_file.name
+                st.session_state.results_history.append(result)
+                st.session_state.latest_result = result
+
+        result = st.session_state.latest_result
+        if result:
+            st.markdown("#### Extraction Results")
+            st.success(f"✅ Processing completed in {result.get('processing_time', 0):.2f} seconds")
+            entities = result.get("entities", {})
+            # For spaCy NER, display as table with text and label columns
+            if file_type == "TXT" and processing_mode == "text" and isinstance(entities, list):
+                entity_df = pd.DataFrame(entities)
+                st.dataframe(entity_df, use_container_width=True)
+                csv_data = entity_df.to_csv(index=False).encode('utf-8')
+                json_data = json.dumps(entities, indent=2)
+                col_csv, col_json = st.columns(2)
+                with col_csv:
+                    st.download_button(
+                        label="⬇️ Export Entities as CSV",
+                        data=csv_data,
+                        file_name=f"{result['filename']}_entities.csv",
+                        mime="text/csv",
+                        key="csv_export"
+                    )
+                with col_json:
+                    st.download_button(
+                        label="⬇️ Export Entities as JSON",
+                        data=json_data,
+                        file_name=f"{result['filename']}_entities.json",
+                        mime="application/json",
+                        key="json_export"
+                    )
+            elif entities:
+                entity_df = pd.DataFrame(list(entities.items()), columns=["Entity", "Value"])
+                st.dataframe(entity_df, use_container_width=True)
+                csv_data = entity_df.to_csv(index=False).encode('utf-8')
+                json_data = json.dumps(entities, indent=2)
+                col_csv, col_json = st.columns(2)
+                with col_csv:
+                    st.download_button(
+                        label="⬇️ Export Entities as CSV",
+                        data=csv_data,
+                        file_name=f"{result['filename']}_entities.csv",
+                        mime="text/csv",
+                        key="csv_export"
+                    )
+                with col_json:
+                    st.download_button(
+                        label="⬇️ Export Entities as JSON",
+                        data=json_data,
+                        file_name=f"{result['filename']}_entities.json",
+                        mime="application/json",
+                        key="json_export"
+                    )
+            display_entity_results(result)
+
         if st.session_state.results_history:
             if st.button("🗑️ Clear History"):
                 st.session_state.results_history = []
+                st.session_state.latest_result = None
                 st.rerun()
     
     # Footer

@@ -81,7 +81,6 @@ flowchart TB
   DB --> O
   P7 --> O
   O --> A
-
 ```
 
 > Diagram (Mermaid) visualizes how the Streamlit UI calls FastAPI. The API dispatches to specialized services and returns a JSON result to the UI.
