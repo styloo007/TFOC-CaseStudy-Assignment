@@ -24,35 +24,18 @@ The document includes component interactions, data flow, example APIs, storage c
 
 ```mermaid
 flowchart LR
-  subgraph U[User Layer]
-    A[Streamlit UI] -->|upload file / paste text| B[API Gateway]
-  end
-
-  subgraph API[API Layer - FastAPI]
-    B --> C{Route Dispatcher}
-    C --> D1[Docx Parser Service]
-    C --> D2[Text NER Service (spaCy)]
-    C --> D3[PDF RAG Service (Gemini + LlamaIndex)]
-    C --> S[Storage]
-    C --> O[Output Formatter]
-  end
-
-  subgraph Proc[Processing]
-    D1 --> P1[python-docx + regex rules]
-    D2 --> P2[spaCy NER model]
-    D3 --> P3[PDF OCR/Preproc --> Embedding/ChromaDB --> LLM (Gemini) via LlamaIndex]
-  end
-
-  subgraph StorageLayer[Persistence]
-    S --> V[ChromaDB]
-    S --> DB[(Relational DB - Postgres/SQLite)]
-    S --> FS[(Object Store - encrypted temp files)]
-  end
-
-  P3 --> V
-  P2 --> DB
-  P1 --> DB
-  O --> B
+  A[Streamlit UI] --> B[FastAPI API Gateway]
+  B --> C{Route Dispatcher}
+  C --> D1[Docx Parser Service]
+  C --> D2[Text NER Service (spaCy)]
+  C --> D3[PDF RAG Service (Gemini + LlamaIndex)]
+  D1 --> DB[(Relational DB - Postgres/SQLite)]
+  D2 --> DB
+  D3 --> V[ChromaDB]
+  D3 --> DB
+  DB --> O[JSON Output]
+  V --> O
+  O --> A
 ```
 
 > Diagram (Mermaid) visualizes how the Streamlit UI calls FastAPI. The API dispatches to specialized services and returns a JSON result to the UI.
