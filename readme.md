@@ -34,37 +34,37 @@ flowchart TB
   end
 
   subgraph DocxFlow[Docx Parser Service]
-    D1a[python-docx Reader]
-    D1b[Regex + Heuristics]
+    D1a[Docx Reader]
+    D1b[Regex Heuristics]
     D1a --> D1b
   end
 
   subgraph TextFlow[Text NER Service]
     D2a[spaCy Model]
-    D2b[Entity Post-processor]
+    D2b[Entity Postprocessor]
     D2a --> D2b
   end
 
   subgraph PDFFlow[PDF RAG Service]
-    P1[PDF Parser / OCR]
+    P1[PDF Parser OCR]
     P2[Chunking]
-    P3[Embedding (bge-base)]
+    P3[Embedding Model]
     P4[ChromaDB Store]
     P5[Retriever]
     P6[LlamaIndex Orchestrator]
-    P7[Gemini LLM Extractor]
+    P7[Gemini Extractor]
     P1 --> P2 --> P3 --> P4
     P5 --> P6 --> P7
     P4 --> P5
   end
 
   subgraph Storage[Storage Layer]
-    DB[(Relational DB: Entities)]
-    V[ChromaDB (Vector Store)]
+    DB[Relational DB]
+    V[ChromaDB]
   end
 
   subgraph Output[Results]
-    O[JSON Output to UI]
+    O[JSON Output]
   end
 
   A --> B --> C
