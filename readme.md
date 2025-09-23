@@ -24,12 +24,12 @@ The document includes component interactions, data flow, example APIs, storage c
 
 ```mermaid
 flowchart LR
-  A[Streamlit UI] --> B[FastAPI API Gateway]
-  B --> C{Route Dispatcher}
-  C --> D1[Docx Parser Service]
-  C --> D2[Text NER Service (spaCy)]
-  C --> D3[PDF RAG Service (Gemini + LlamaIndex)]
-  D1 --> DB[(Relational DB - Postgres/SQLite)]
+  A[Streamlit UI] --> B[FastAPI API]
+  B --> C{Dispatcher}
+  C --> D1[Docx Parser]
+  C --> D2[Text NER]
+  C --> D3[PDF RAG Service]
+  D1 --> DB[(Relational DB)]
   D2 --> DB
   D3 --> V[ChromaDB]
   D3 --> DB
