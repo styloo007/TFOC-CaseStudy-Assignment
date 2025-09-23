@@ -23,19 +23,65 @@ The document includes component interactions, data flow, example APIs, storage c
 ## 2. High-level architecture
 
 ```mermaid
-flowchart LR
-  A[Streamlit UI] --> B[FastAPI API]
-  B --> C{Dispatcher}
-  C --> D1[Docx Parser]
-  C --> D2[Text NER]
-  C --> D3[PDF RAG Service]
-  D1 --> DB[(Relational DB)]
-  D2 --> DB
-  D3 --> V[ChromaDB]
-  D3 --> DB
-  DB --> O[JSON Output]
-  V --> O
+flowchart TB
+  subgraph UI[Frontend]
+    A[Streamlit UI]
+  end
+
+  subgraph API[API Layer - FastAPI]
+    B[API Gateway]
+    C{Dispatcher}
+  end
+
+  subgraph DocxFlow[Docx Parser Service]
+    D1a[python-docx Reader]
+    D1b[Regex + Heuristics]
+    D1a --> D1b
+  end
+
+  subgraph TextFlow[Text NER Service]
+    D2a[spaCy Model]
+    D2b[Entity Post-processor]
+    D2a --> D2b
+  end
+
+  subgraph PDFFlow[PDF RAG Service]
+    P1[PDF Parser / OCR]
+    P2[Chunking]
+    P3[Embedding (bge-base)]
+    P4[ChromaDB Store]
+    P5[Retriever]
+    P6[LlamaIndex Orchestrator]
+    P7[Gemini LLM Extractor]
+    P1 --> P2 --> P3 --> P4
+    P5 --> P6 --> P7
+    P4 --> P5
+  end
+
+  subgraph Storage[Storage Layer]
+    DB[(Relational DB: Entities)]
+    V[ChromaDB (Vector Store)]
+  end
+
+  subgraph Output[Results]
+    O[JSON Output to UI]
+  end
+
+  A --> B --> C
+  C --> DocxFlow
+  C --> TextFlow
+  C --> PDFFlow
+
+  DocxFlow --> DB
+  TextFlow --> DB
+  PDFFlow --> DB
+  PDFFlow --> V
+  V --> P5
+
+  DB --> O
+  P7 --> O
   O --> A
+
 ```
 
 > Diagram (Mermaid) visualizes how the Streamlit UI calls FastAPI. The API dispatches to specialized services and returns a JSON result to the UI.
