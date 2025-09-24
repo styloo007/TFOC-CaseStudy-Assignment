@@ -265,48 +265,84 @@ def main():
         help="Supported formats: DOCX, PDF, TXT"
     )
 
-    # RAG chat only after PDF upload and ingestion
     if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+        # --- File Info at the Top ---
+        st.markdown("""
+            <div style='background: #f0f4f8; border-radius: 10px; padding: 1.2rem 1rem 0.5rem 1rem; margin-bottom: 1.5rem;'>
+                <h3 style='color: #1f4e79; margin-bottom: 0.5rem;'>📄 File Information</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        file_type = uploaded_file.name.split('.')[-1].upper()
+        file_info = {
+            "Filename": uploaded_file.name,
+            "Size (bytes)": len(uploaded_file.getvalue()),
+            "Type": file_type
+        }
+        st.table(pd.DataFrame([file_info]))
+
         st.divider()
-        st.markdown("## RAG Pipeline")
+        st.markdown("## <span style='color:#2e7d32;'>RAG Pipeline</span>", unsafe_allow_html=True)
         if "rag_ingested" not in st.session_state:
             st.session_state.rag_ingested = False
 
         if not st.session_state.rag_ingested:
-            if st.button("Ingest PDF for RAG", key="rag_ingest"):
-                # Send PDF file to /rag/ingest endpoint
+            st.info("To chat with your PDF, please ingest it first.")
+            if st.button("Ingest PDF for RAG", key="rag_ingest", help="Send PDF to backend for ingestion"):
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-                ingest_response = requests.post(f"{API_BASE_URL}/rag/ingest", files=files)
+                with st.spinner("Ingesting PDF..."):
+                    ingest_response = requests.post(f"{API_BASE_URL}/rag/ingest", files=files)
                 if ingest_response.ok and ingest_response.json().get("status") == "ingested":
                     st.session_state.rag_ingested = True
                     st.success("PDF ingested. You can now chat with your documents.")
                 else:
                     st.error(f"Ingestion failed: {ingest_response.text}")
-        else:
-            st.markdown("### RAG Chatbot")
+        if st.session_state.rag_ingested:
+            st.markdown("""
+                <div style='background: #e8f5e9; border-radius: 10px; padding: 1.2rem 1rem 0.5rem 1rem; margin-bottom: 1.5rem;'>
+                    <h3 style='color: #1f4e79; margin-bottom: 0.5rem;'>💬 RAG Chatbot</h3>
+                    <p style='color: #555;'>Ask questions about your PDF. Both <b>Enter</b> and <b>Send</b> will submit your query.</p>
+                </div>
+            """, unsafe_allow_html=True)
             if "chat_history" not in st.session_state:
                 st.session_state.chat_history = []
 
-            user_input = st.text_input("Ask a question about your PDF:", key="rag_user_input")
-            if st.button("Send", key="rag_send"):
-                if user_input:
+            # --- Chat Input with Enter/Send (above chat history) ---
+            with st.form(key="rag_chat_form", clear_on_submit=True):
+                user_input = st.text_input(
+                    "Ask a question about your PDF:",
+                    key="rag_user_input",
+                    placeholder="Type your question and press Enter or click Send...",
+                    label_visibility="collapsed"
+                )
+                submitted = st.form_submit_button("Send", use_container_width=True)
+                if submitted and user_input:
                     st.session_state.chat_history.append({"role": "user", "content": user_input})
-                    response = requests.post(
-                        f"{API_BASE_URL}/rag/query",
-                        json={"query": user_input}
-                    )
+                    with st.spinner("Fetching response..."):
+                        response = requests.post(
+                            f"{API_BASE_URL}/rag/query",
+                            json={"query": user_input}
+                        )
                     if response.ok:
                         answer = response.json().get("response", "")
                         st.session_state.chat_history.append({"role": "assistant", "content": answer})
 
-            # Display chat history
+            # --- Chat History Display (below form) ---
+            st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
             for msg in st.session_state.chat_history:
                 if msg["role"] == "user":
-                    st.markdown(f"**You:** {msg['content']}")
+                    st.markdown(f"""
+                        <div style='background:#e3f2fd; border-radius:8px; padding:0.7rem 1rem; margin-bottom:0.5rem;'>
+                            <span style='color:#1565c0; font-weight:600;'>You:</span> <span style='color:#222'>{msg['content']}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.markdown(f"**RAG Bot:** {msg['content']}")
+                    st.markdown(f"""
+                        <div style='background:#f1f8e9; border-radius:8px; padding:0.7rem 1rem; margin-bottom:0.5rem;'>
+                            <span style='color:#2e7d32; font-weight:600;'>RAG Bot:</span> <span style='color:#222'>{msg['content']}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
 
-    if uploaded_file is not None:
+    elif uploaded_file is not None:
         st.markdown("#### File Information")
         file_type = uploaded_file.name.split('.')[-1].upper()
         file_info = {
@@ -374,7 +410,7 @@ def main():
                         mime="application/json",
                         key="json_export"
                     )
-            elif entities:
+            elif isinstance(entities, dict):
                 entity_df = pd.DataFrame(list(entities.items()), columns=["Entity", "Value"])
                 st.dataframe(entity_df, use_container_width=True)
                 csv_data = entity_df.to_csv(index=False).encode('utf-8')
@@ -396,6 +432,8 @@ def main():
                         mime="application/json",
                         key="json_export"
                     )
+            else:
+                st.warning("Entities format not recognized for tabular display.")
             display_entity_results(result)
 
         if st.session_state.results_history:

@@ -26,7 +26,7 @@ Settings.llm = llm
 def data_ingestion(folder_path, chroma_db_path):
     os.makedirs(folder_path, exist_ok=True)
     documents = SimpleDirectoryReader(folder_path).load_data()
-    splitter = SentenceSplitter(chunk_size=512, chunk_overlap=64)
+    splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=128)
 
     db = chromadb.PersistentClient(path=chroma_db_path)
     chroma_collection = db.get_or_create_collection("DB_collection")
@@ -54,7 +54,7 @@ def handle_query(query, chroma_db_path):
         embed_model=embed_model,
         storage_context=storage_context
     )
-    query_engine = index.as_query_engine(llm=llm, similarity_top_k=3, verbose=True, response="compact")
+    query_engine = index.as_query_engine(llm=llm, similarity_top_k=3, verbose=True, response="refine")
     response = query_engine.query(query)
     return response
 

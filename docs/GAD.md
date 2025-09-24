@@ -13,8 +13,8 @@
 This GAD describes a high-level architecture for a financial document reader that extracts structured entities from financial documents (DOCX, chat/plain text, PDF). The system is built as a PoC focused on **Named Entity Recognition (NER)** and demonstrates three processing flows:
 
 * Rule-based parsing for DOCX
-* spaCy-based NER for chat/text
-* LLM + RAG pipeline (Google Gemini + ChromaDB + baai/bge-base-en-v1.5 embeddings + LlamaIndex) for PDFs
+* HuggingFace Transformers-based NER for chat/text
+* LLM + RAG pipeline (Google Gemini + ChromaDB + HuggingFace embeddings + LlamaIndex) for PDFs
 
 The document includes component interactions, data flow, example APIs, storage choices, security considerations, and an example output schema.
 
@@ -106,9 +106,9 @@ flowchart TB
 * Responsibility: reliably parse semi-structured term sheets and extract target entities using deterministic rules and heuristics.
 * Output: JSON with entities + metadata (confidence = deterministic / high).
 
-### 3.4 Text NER Service (spaCy)
+### 3.4 Text NER Service (HuggingFace Transformers)
 
-* Libraries: `spaCy` (pretrained model), custom entity labels (COUNTERPARTY, NOTIONAL, ISIN, VALUATION\_DATE, MATURITY, UNDERLYING, COUPON, BARRIER, CALENDAR).
+* Libraries: HuggingFace Transformers (dslim/bert-base-NER), custom entity labels possible with fine-tuning.
 * Responsibility: run NER on chat-like or free text and return token-level and span-level extractions.
 * Fine-tuning: methodology doc (GMD) describes how to fine-tune on labeled financial data.
 
@@ -238,11 +238,83 @@ Example JSON (from Allianz trade):
 * Frontend: **Streamlit**
 * API: **FastAPI** (uvicorn)
 * Docx parsing: `python-docx`, `regex`, `dateparser`
-* NER: **spaCy** (custom labels, optionally fine-tune)
+* NER: **HuggingFace Transformers** (dslim/bert-base-NER, optionally fine-tuned)
 * LLM & RAG: **Google Gemini** (LLM), **LlamaIndex** (framework), **ChromaDB** (vector DB), embeddings: `baai/bge-base-en-v1.5`
 * Storage: SQLite/Postgres (PoC), filesystem for temp files
 * Background jobs: Celery / RQ / FastAPI BackgroundTasks
 
 ---
+
+## 8. Implementation Notes, Methodology, and Scope Clarification
+
+### 8.1 Scope Clarification
+This Proof of Concept (PoC) **only implements Named Entity Recognition (NER)** for financial documents, as per the coding test objectives. Features such as document classification, summarization, topic modeling, and Q&A are out of scope for this submission, but the architecture is designed to be extensible for those in the future.
+
+### 8.2 What is Implemented
+- **NER for DOCX:** Rule-based parser using `python-docx`, regex, and heuristics.
+- **NER for Chat/Text:** General-purpose NER using HuggingFace Transformers (`dslim/bert-base-NER`).
+- **NER for PDF:** LLM + RAG pipeline using LlamaIndex, Gemini, and ChromaDB.
+- **Streamlit UI:** For uploading DOCX, PDF, TXT and extracting/displaying entities.
+- **API:** FastAPI endpoints for health, extraction, and PDF ingestion/query.
+- **ChromaDB:** Used for vector storage in the RAG pipeline.
+
+### 8.3 What is Not Implemented (and Why)
+- **Classification, Summarization, Topic Modeling, Q&A:** Not required for this NER PoC.
+- **Async job handling for PDFs:** All processing is synchronous; no `/status/{job_id}` endpoint.
+- **Unified `/upload` and `/ner` endpoints:** Endpoints are split by type for clarity and modularity.
+- **Relational DB for entity storage:** Not implemented; ChromaDB and filesystem are used.
+- **OCR for PDFs:** Not explicitly implemented; assumes PDFs are text-based.
+- **spaCy/fine-tuned NER:** Uses HuggingFace Transformers for NER due to ease of use and accuracy; spaCy or fine-tuning can be added in future work.
+- **Strict entity schema enforcement:** Output schema is flexible and depends on the extraction model.
+
+### 8.4 NER Fine-Tuning Methodology (GMD)
+If further accuracy or domain adaptation is required, the following methodology can be used to fine-tune a NER model for financial entities:
+
+1. **Data Collection:**
+   - Gather a corpus of financial documents (term sheets, contracts, chat logs, etc.).
+   - Annotate entities of interest (e.g., Counterparty, Notional, ISIN, Dates, Coupon, Barrier, etc.) using annotation tools like Prodigy, doccano, or Label Studio.
+
+2. **Data Preparation:**
+   - Convert annotated data to a format compatible with the chosen NER framework (e.g., spaCy, HuggingFace). For HuggingFace, use the CoNLL or JSON format.
+
+3. **Model Selection:**
+   - Start with a pretrained model (e.g., `bert-base-cased`, `dslim/bert-base-NER`, or a spaCy transformer model).
+
+4. **Fine-Tuning:**
+   - Train the model on the annotated dataset, monitoring entity-level F1 score.
+   - Use early stopping and validation splits to avoid overfitting.
+
+5. **Evaluation:**
+   - Evaluate on a held-out test set. Report precision, recall, and F1 for each entity type.
+
+6. **Deployment:**
+   - Integrate the fine-tuned model into the backend pipeline (replace the general NER model).
+   - Optionally, expose a `/ner` endpoint for custom entity extraction.
+
+7. **Continuous Improvement:**
+   - Periodically retrain with new annotated data to improve coverage and accuracy.
+
+### 8.5 LLM/RAG Pipeline Methodology (for PDF NER)
+- **Chunking:** PDF is split into manageable text chunks.
+- **Embedding:** Each chunk is embedded using a transformer model (HuggingFace).
+- **Vector Storage:** Embeddings are stored in ChromaDB.
+- **Retrieval:** At query time, relevant chunks are retrieved based on similarity to the user query.
+- **LLM Extraction:** Gemini LLM is prompted with the retrieved context to extract entities.
+- **Extensibility:** This pipeline can be adapted for Q&A, summarization, or topic modeling by changing the prompt and post-processing logic.
+
+---
+
+## 9. How to Run and Test
+- Install requirements: `pip install -r requirements.txt`
+- Start the FastAPI backend: `uvicorn app.api.main:app --reload`
+- Start the Streamlit frontend: `streamlit run app/frontend/streamlit_app.py`
+- Upload DOCX, PDF, or TXT files and extract entities via the UI.
+
+---
+
+## 10. Reviewer Notes
+- This PoC is focused on NER only, as per assignment instructions.
+- The codebase is modular and can be extended to support additional NLP tasks in the future.
+- For any questions or suggestions, please refer to the comments in the code and this document.
 
 
