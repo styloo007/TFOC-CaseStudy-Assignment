@@ -1,1 +1,5 @@
 .env
+__pycache__
+uploaded_rag_docs
+chroma_db
+hf_cache
