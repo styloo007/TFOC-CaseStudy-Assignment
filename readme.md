@@ -40,7 +40,7 @@ flowchart TB
   end
 
   subgraph TextFlow[Text NER Service]
-    D2a[spaCy Model]
+    D2a[Open Source NER Model]
     D2b[Entity Postprocessor]
     D2a --> D2b
   end
@@ -59,7 +59,6 @@ flowchart TB
   end
 
   subgraph Storage[Storage Layer]
-    DB[Relational DB]
     V[ChromaDB]
   end
 
@@ -72,13 +71,9 @@ flowchart TB
   C --> TextFlow
   C --> PDFFlow
 
-  DocxFlow --> DB
-  TextFlow --> DB
-  PDFFlow --> DB
   PDFFlow --> V
   V --> P5
 
-  DB --> O
   P7 --> O
   O --> A
 ```
@@ -96,9 +91,25 @@ flowchart TB
 
 ### 3.2 FastAPI (API Layer)
 
-* Exposes endpoints for: `/upload`, `/ner`, `/status/{job_id}`, `/health`.
-* Validates input and orchestration: routes requests to the appropriate pipeline (docx/text/pdf).
-* For heavy/long-running jobs (PDF → LLM) it enqueues tasks and returns job id.
+### 1. **Document Extraction Endpoints**
+
+* **`POST /extract/docx`** → Upload a `.docx` file, extracts financial entities using a **rule-based parser**, returns JSON with entities.
+* **`POST /extract/text`** → Upload a `.txt` file, extracts entities using an **NER model**, returns JSON with entities.
+* **`POST /extract/auto`** → Auto-detect extraction (currently supports `.docx` only).
+
+---
+
+### 2. **RAG (PDF) Pipeline Endpoints**
+
+* **`POST /rag/ingest`** → Upload a PDF, ingest it into the **RAG pipeline** (embeddings + ChromaDB).
+* **`POST /rag/query`** → Send a query against previously ingested docs, returns **LLM-based answer**.
+
+---
+
+### 3. **Utility Endpoint**
+
+* **`GET /health`** → Health check endpoint, returns `{ "status": "ok" }`.
+
 
 ### 3.3 Docx Parser Service (Rule-based)
 
@@ -139,8 +150,8 @@ flowchart TB
 ### 4.2 Chat/text flow (sync)
 
 1. Streamlit paste/text → `POST /ner` (type=text)
-2. FastAPI forwards to spaCy NER service
-3. spaCy returns spans & labels → post-process to canonicalize dates/currencies
+2. FastAPI forwards to Open Source NER service
+3. NER Model returns spans & labels → post-process to canonicalize dates/currencies
 4. Store results and return JSON
 
 ### 4.3 PDF flow (async / RAG)
@@ -153,43 +164,7 @@ flowchart TB
 
 ---
 
-## 5. API Design (Example)
-
-### `POST /ner` (sync)
-
-Request body (multipart/form-data):
-
-* `file` (optional) - uploaded file
-* `text` (optional) - raw text
-* `mode` - one of `docx` | `text` | `pdf`
-* `entities` (optional) - list of desired entity names to extract
-
-Response (200):
-
-```json
-{
-  "job_id": null,
-  "status": "done",
-  "entities": { ... },
-  "provenance": { ... }
-}
-```
-
-### `POST /ner?async=true` (for PDF)
-
-Response (202 Accepted):
-
-```json
-{ "job_id": "uuid-1234", "status": "queued" }
-```
-
-### `GET /status/{job_id}`
-
-Returns job state and result when completed.
-
----
-
-## 6. Entity Schema / Example Output
+## 5. Entity Schema / Example Output
 
 Canonical entity names and types (PoC):
 
@@ -233,7 +208,7 @@ Example JSON (from Allianz trade):
 
 ---
 
-## 7. Tech Stack & Libraries (PoC)
+## 6. Tech Stack & Libraries (PoC)
 
 * Frontend: **Streamlit**
 * API: **FastAPI** (uvicorn)
@@ -245,29 +220,8 @@ Example JSON (from Allianz trade):
 
 ---
 
-## 8. Implementation Notes, Methodology, and Scope Clarification
 
-### 8.1 Scope Clarification
-This Proof of Concept (PoC) **only implements Named Entity Recognition (NER)** for financial documents, as per the coding test objectives. Features such as document classification, summarization, topic modeling, and Q&A are out of scope for this submission, but the architecture is designed to be extensible for those in the future.
-
-### 8.2 What is Implemented
-- **NER for DOCX:** Rule-based parser using `python-docx`, regex, and heuristics.
-- **NER for Chat/Text:** General-purpose NER using HuggingFace Transformers (`dslim/bert-base-NER`).
-- **NER for PDF:** LLM + RAG pipeline using LlamaIndex, Gemini, and ChromaDB.
-- **Streamlit UI:** For uploading DOCX, PDF, TXT and extracting/displaying entities.
-- **API:** FastAPI endpoints for health, extraction, and PDF ingestion/query.
-- **ChromaDB:** Used for vector storage in the RAG pipeline.
-
-### 8.3 What is Not Implemented (and Why)
-- **Classification, Summarization, Topic Modeling, Q&A:** Not required for this NER PoC.
-- **Async job handling for PDFs:** All processing is synchronous; no `/status/{job_id}` endpoint.
-- **Unified `/upload` and `/ner` endpoints:** Endpoints are split by type for clarity and modularity.
-- **Relational DB for entity storage:** Not implemented; ChromaDB and filesystem are used.
-- **OCR for PDFs:** Not explicitly implemented; assumes PDFs are text-based.
-- **spaCy/fine-tuned NER:** Uses HuggingFace Transformers for NER due to ease of use and accuracy; spaCy or fine-tuning can be added in future work.
-- **Strict entity schema enforcement:** Output schema is flexible and depends on the extraction model.
-
-### 8.4 NER Fine-Tuning Methodology (GMD)
+### 7 NER Fine-Tuning Methodology (GMD)
 If further accuracy or domain adaptation is required, the following methodology can be used to fine-tune a NER model for financial entities:
 
 1. **Data Collection:**
@@ -294,7 +248,8 @@ If further accuracy or domain adaptation is required, the following methodology 
 7. **Continuous Improvement:**
    - Periodically retrain with new annotated data to improve coverage and accuracy.
 
-### 8.5 LLM/RAG Pipeline Methodology (for PDF NER)
+
+### 8 LLM/RAG Pipeline Methodology (for PDF NER)
 - **Chunking:** PDF is split into manageable text chunks.
 - **Embedding:** Each chunk is embedded using a transformer model (HuggingFace).
 - **Vector Storage:** Embeddings are stored in ChromaDB.
@@ -312,9 +267,5 @@ If further accuracy or domain adaptation is required, the following methodology 
 
 ---
 
-## 10. Reviewer Notes
-- This PoC is focused on NER only, as per assignment instructions.
-- The codebase is modular and can be extended to support additional NLP tasks in the future.
-- For any questions or suggestions, please refer to the comments in the code and this document.
 
 

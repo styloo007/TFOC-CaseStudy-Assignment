@@ -5,8 +5,7 @@ import pandas as pd
 from typing import Dict, Any
 import time
 from datetime import datetime
-import plotly.express as px
-import plotly.graph_objects as go
+
 
 # Configure Streamlit page
 st.set_page_config(
@@ -231,31 +230,6 @@ def display_analytics_dashboard(results_history: list):
     
     df = pd.DataFrame(df_data)
     
-    # Create visualizations
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Entity extraction success rate by document type
-        fig1 = px.bar(
-            df, 
-            x="Document", 
-            y="Success_Rate",
-            color="Type",
-            title="Entity Extraction Success Rate",
-            labels={"Success_Rate": "Success Rate (%)", "Document": "Processed Documents"}
-        )
-        fig1.update_layout(yaxis_tickformat=".0%")
-        st.plotly_chart(fig1, use_container_width=True)
-    
-    with col2:
-        # Processing method distribution
-        method_counts = df["Method"].value_counts()
-        fig2 = px.pie(
-            values=method_counts.values,
-            names=method_counts.index,
-            title="Processing Methods Used"
-        )
-        st.plotly_chart(fig2, use_container_width=True)
 
 def main():
     # File uploader at the very top so uploaded_file is always defined
@@ -355,7 +329,7 @@ def main():
         st.markdown("#### Processing Options")
         processing_mode = st.selectbox(
             "Select Processing Mode",
-            ["auto", "docx", "pdf", "chat", "text"],
+            ["docx", "text"],
             help="Auto-detect will choose the best method based on file type"
         )
 
