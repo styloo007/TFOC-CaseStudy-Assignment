@@ -1,6 +1,6 @@
 # Global Architecture Document (GAD)
 
-**Project:** Financial Document Reader — NER Proof of Concept (PoC)
+**Project:** ADOR - Augmented Document Reader
 
 **Author:** Shashank Agasimani
 
