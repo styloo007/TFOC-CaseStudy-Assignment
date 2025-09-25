@@ -132,7 +132,6 @@ flowchart TB
 ### 3.6 Storage
 
 * **ChromaDB**: persistent vector store for embeddings (PDF chunks + metadata).
-* **Relational DB** (optional): persisted structured entity records for each processed document (Postgres/SQLite for PoC).
 * **Object store / filesystem**: encrypted temporary storage for uploaded files.
 
 ---
